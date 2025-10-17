@@ -7,31 +7,38 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use App\Models\User;
 use App\Models\Product;
+use App\Models\IotData;
 
 class DemoSeeder extends Seeder
 {
     public function run(): void
     {
-        // Create demo farmer user if not exists
+        // Create demo farmer (petani) user if not exists
         $attrs = [
             'name' => 'Petani Demo',
             'password' => Hash::make('password'),
         ];
         if (Schema::hasColumn('users', 'role')) {
-            $attrs['role'] = 'farmer';
+            $attrs['role'] = 'petani';
+            if (Schema::hasColumn('users', 'is_active')) {
+                $attrs['is_active'] = true;
+            }
         }
         $user = User::firstOrCreate(
             ['email' => 'petani@example.com'],
             $attrs
         );
 
-        // Create demo buyer user if not exists
+        // Create demo buyer (pembeli) user if not exists
         $buyerAttrs = [
             'name' => 'Pembeli Demo',
             'password' => Hash::make('password'),
         ];
         if (Schema::hasColumn('users', 'role')) {
-            $buyerAttrs['role'] = 'buyer';
+            $buyerAttrs['role'] = 'pembeli';
+            if (Schema::hasColumn('users', 'is_active')) {
+                $buyerAttrs['is_active'] = true;
+            }
         }
         $buyer = User::firstOrCreate(
             ['email' => 'pembeli@example.com'],
@@ -63,6 +70,24 @@ class DemoSeeder extends Seeder
                 'price' => 8000,
                 'stock' => 100,
                 'image_url' => null,
+            ]);
+        }
+
+        // IoT dummy rows
+        if (class_exists(IotData::class)) {
+            IotData::create([
+                'user_id' => $user->id,
+                'temperature' => 26.5,
+                'humidity' => 70.2,
+                'soil_moisture' => 55.1,
+                'updated_at' => now()->subHours(3),
+            ]);
+            IotData::create([
+                'user_id' => $user->id,
+                'temperature' => 27.1,
+                'humidity' => 68.4,
+                'soil_moisture' => 52.7,
+                'updated_at' => now()->subHour(),
             ]);
         }
     }

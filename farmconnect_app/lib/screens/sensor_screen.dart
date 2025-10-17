@@ -32,7 +32,7 @@ class _SensorScreenState extends State<SensorScreen> {
 
   Future<void> _fetch() async {
     try {
-      final data = await api.getSensorReadings();
+      final data = await api.getIotData();
       if (!mounted) return;
       setState(() {
         readings = data;
@@ -85,15 +85,13 @@ class _SensorScreenState extends State<SensorScreen> {
                     color: const Color(0xFFFFF8E1), // nuansa coklat muda kekuningan
                     child: ListTile(
                       leading: const Icon(Icons.thermostat, color: Color(0xFF2E7D32)),
-                      title: Text(
-                        'Suhu: ${r.temperature.toStringAsFixed(1)} °C',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      title: Text('Suhu: ${r.temperature.toStringAsFixed(1)} °C', style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Kelembapan Tanah: ${r.soilMoisture.toStringAsFixed(1)} %'),
-                          Text('Waktu: ${r.recordedAt.toLocal()}'),
+                          Text('Kelembapan Udara: ${r.humidity.toStringAsFixed(1)} %'),
+                          Text('Waktu: ${r.updatedAt.toLocal()}'),
                         ],
                       ),
                       trailing: const Icon(Icons.water_drop, color: Color(0xFFA1887F)),

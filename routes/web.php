@@ -2,13 +2,19 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\ProductAdminController;
+use App\Http\Controllers\Admin\AdminAuthController;
 use Illuminate\Support\Facades\DB;
 
 Route::get('/', function () {
     return view('welcome');
 });
 
-Route::prefix('admin')->name('admin.')->group(function () {
+// Admin auth (session)
+Route::get('/admin/login', [AdminAuthController::class, 'showLogin'])->name('admin.login');
+Route::post('/admin/login', [AdminAuthController::class, 'login'])->name('admin.login.post');
+Route::post('/admin/logout', [AdminAuthController::class, 'logout'])->name('admin.logout');
+
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin'])->group(function () {
     Route::get('/products', [ProductAdminController::class, 'index'])->name('products.index');
     Route::get('/products/create', [ProductAdminController::class, 'create'])->name('products.create');
     Route::post('/products', [ProductAdminController::class, 'store'])->name('products.store');

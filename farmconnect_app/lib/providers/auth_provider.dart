@@ -8,7 +8,7 @@ class AuthProvider extends ChangeNotifier {
   String? _token;
   int? _userId;
   String? _name;
-  String _role = 'buyer'; // default if backend doesn't send
+  String _role = 'pembeli'; // default if backend doesn't send
 
   String? get token => _token;
   int? get userId => _userId;
@@ -21,8 +21,15 @@ class AuthProvider extends ChangeNotifier {
     _token = prefs.getString('token');
     _userId = prefs.getInt('user_id');
     _name = prefs.getString('user_name');
-    _role = prefs.getString('role') ?? 'buyer';
+    _role = prefs.getString('role') ?? 'pembeli';
     notifyListeners();
+  }
+
+  void setRole(String role) {
+    if (role == 'petani' || role == 'pembeli') {
+      _role = role;
+      notifyListeners();
+    }
   }
 
   Future<void> login(String email, String password) async {
@@ -35,7 +42,7 @@ class AuthProvider extends ChangeNotifier {
     if (uid != null) await prefs.setInt('user_id', uid);
     await prefs.setString('user_name', user.name as String);
     // role: prefer API field, then user.role, else buyer
-    final role = (res['role'] as String?) ?? (user.role as String?) ?? 'buyer';
+    final role = (res['role'] as String?) ?? (user.role as String?) ?? 'pembeli';
     await prefs.setString('role', role);
 
     _token = token;
@@ -45,8 +52,10 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> register({required String name, required String email, required String password}) async {
-    final res = await _api.register(name: name, email: email, password: password);
+  Future<void> register({required String name, required String email, required String password, String? role}) async {
+    // Use explicit role if provided, else current state, else fallback to pembeli
+    final selectedRole = role ?? _role;
+    final res = await _api.register(name: name, email: email, password: password, role: selectedRole);
     final token = res['token'] as String?;
     final user = res['user'];
     final prefs = await SharedPreferences.getInstance();
@@ -54,13 +63,13 @@ class AuthProvider extends ChangeNotifier {
     final uid = (user.id as int?);
     if (uid != null) await prefs.setInt('user_id', uid);
     await prefs.setString('user_name', user.name as String);
-    final role = (res['role'] as String?) ?? (user.role as String?) ?? 'buyer';
-    await prefs.setString('role', role);
+    final effectiveRole = (res['role'] as String?) ?? (user.role as String?) ?? 'pembeli';
+    await prefs.setString('role', effectiveRole);
 
     _token = token;
     _userId = uid;
     _name = user.name as String;
-    _role = role;
+    _role = effectiveRole;
     notifyListeners();
   }
 

@@ -5,13 +5,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Product extends Model
+class IotData extends Model
 {
     use HasFactory;
 
+    protected $table = 'iot_data';
+
     protected $fillable = [
-        'user_id', 'name', 'description', 'price', 'unit', 'stock', 'image_url'
+        'user_id', 'temperature', 'humidity', 'soil_moisture', 'updated_at'
     ];
+
+    public $timestamps = false; // we manage updated_at per spec
 
     public function user()
     {

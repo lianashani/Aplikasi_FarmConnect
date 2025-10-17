@@ -1,0 +1,116 @@
+{
+  "info": {
+    "name": "FarmConnect API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "farmconnect-api-collection"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {"method": "GET", "url": "{{baseUrl}}/api/health"}
+    },
+    {
+      "name": "Auth - Register",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/register",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Petani A\",\n  \"email\": \"petani_a@example.com\",\n  \"password\": \"password\",\n  \"role\": \"petani\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/login",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"petani@example.com\",\n  \"password\": \"password\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": {
+          "exec": [
+            "const json = pm.response.json();",
+            "pm.environment.set('token', json.token);"
+          ], "type": "text/javascript"
+        }
+      }]
+    },
+    {
+      "name": "Auth - Me",
+      "request": {"method": "GET", "url": "{{baseUrl}}/api/user/profile", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}]}
+    },
+    {
+      "name": "Products - List",
+      "request": {"method": "GET", "url": "{{baseUrl}}/api/products", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}]}
+    },
+    {
+      "name": "Products - Create (petani/admin)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/products",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"name\": \"Sayur Baru\",\n  \"description\": \"Deskripsi\",\n  \"price\": 10000,\n  \"stock\": 10\n}"}
+      }
+    },
+    {
+      "name": "Transactions - Create (pembeli)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/transactions",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"product_id\": 1,\n  \"quantity\": 2\n}"}
+      }
+    },
+    {
+      "name": "Transactions - List",
+      "request": {"method": "GET", "url": "{{baseUrl}}/api/transactions", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}]}
+    },
+    {
+      "name": "Transactions - Update Status (admin/petani)",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/api/transactions/1/status",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"status\": \"processed\"\n}"}
+      }
+    },
+    {
+      "name": "IoT - List (admin/petani)",
+      "request": {"method": "GET", "url": "{{baseUrl}}/api/iot", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}]}
+    },
+    {
+      "name": "IoT - Create (admin/petani)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/iot",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"temperature\": 26.7,\n  \"humidity\": 72.1,\n  \"soil_moisture\": 51.2\n}"}
+      }
+    },
+    {
+      "name": "Admin - Users List",
+      "request": {"method": "GET", "url": "{{baseUrl}}/api/admin/users", "header": [{"key": "Authorization", "value": "Bearer {{token}}"}]}
+    },
+    {
+      "name": "Admin - Create User",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/admin/users",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}, {"key": "Content-Type", "value": "application/json"}],
+        "body": {"mode": "raw", "raw": "{\n  \"name\": \"Admin Two\",\n  \"email\": \"admin2@farmconnect.com\",\n  \"password\": \"password\",\n  \"role\": \"admin\"\n}"}
+      }
+    }
+  ],
+  "event": [],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8000"},
+    {"key": "token", "value": ""}
+  ]
+}

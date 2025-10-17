@@ -1,5 +1,5 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product.dart';
 import '../models/user.dart';
@@ -8,64 +8,156 @@ import '../models/transaction.dart';
 import '../config/api_config.dart';
 
 class ApiService {
-  // Ganti ke 10.0.2.2 jika pakai Android emulator
-  static const String baseUrl = ApiConfig.baseUrl;
+  static final Dio _dio = Dio(BaseOptions(
+    baseUrl: ApiConfig.baseUrl,
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 20),
+    headers: {
+      HttpHeaders.acceptHeader: 'application/json',
+    },
+  ));
+
+  ApiService() {
+    // Add interceptor once
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString('token');
+        if (token != null && token.isNotEmpty) {
+          options.headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+        }
+        return handler.next(options);
+      },
+      onError: (e, handler) async {
+        if (e.response?.statusCode == 401) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('token');
+          await prefs.remove('role');
+          await prefs.remove('user_id');
+          await prefs.remove('user_name');
+        }
+        return handler.next(e);
+      },
+    ));
+  }
 
   Future<Map<String, dynamic>> login(String email, String password) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/auth/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
-    );
-
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
+    try {
+      final res = await _dio.post('/login', data: {
+        'email': email,
+        'password': password,
+      });
+      final data = res.data as Map<String, dynamic>;
       final token = data['token'] as String?;
-      final user = UserModel.fromJson(data);
-      final role = (data['role'] ?? (data['user'] is Map<String, dynamic> ? (data['user']['role']) : null))?.toString();
+      final userJson = (data['user'] as Map<String, dynamic>?);
+      final user = userJson != null ? UserModel.fromJson(userJson) : UserModel.fromJson(data);
+      final role = (data['role'] ?? userJson?['role'])?.toString();
       if (token != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('token', token);
       }
       return {'token': token, 'user': user, if (role != null) 'role': role};
+    } on DioException catch (e) {
+      throw Exception('Login gagal: ${e.response?.data ?? e.message}');
     }
-    throw Exception('Login gagal: ${res.body}');
+  }
+
+  Future<Map<String, dynamic>> register({
+    required String name,
+    required String email,
+    required String password,
+    required String role,
+  }) async {
+    try {
+      final res = await _dio.post('/register', data: {
+        'name': name,
+        'email': email,
+        'password': password,
+        'role': role,
+      });
+      final data = res.data as Map<String, dynamic>;
+      final token = data['token'] as String?;
+      final userJson = (data['user'] as Map<String, dynamic>?);
+      final user = userJson != null ? UserModel.fromJson(userJson) : UserModel.fromJson(data);
+      final roleResp = (data['role'] ?? userJson?['role'])?.toString();
+      if (token != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', token);
+      }
+      return {'token': token, 'user': user, if (roleResp != null) 'role': roleResp};
+    } on DioException catch (e) {
+      throw Exception('Register gagal: ${e.response?.data ?? e.message}');
+    }
+  }
+
+  Future<void> logout() async {
+    try {
+      await _dio.post('/logout');
+    } finally {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('role');
+      await prefs.remove('user_id');
+      await prefs.remove('user_name');
+    }
+  }
+
+  Future<UserModel> me() async {
+    try {
+      final res = await _dio.get('/user/profile');
+      return UserModel.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw Exception('Gagal memuat profil: ${e.response?.data ?? e.message}');
+    }
+  }
+
+  Future<List<Product>> getProducts() async {
+    try {
+      final res = await _dio.get('/products');
+      final body = res.data;
+      final List items = (body is Map<String, dynamic>) ? (body['data'] ?? []) : body;
+      return items.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+    } on DioException catch (e) {
+      throw Exception('Gagal memuat produk: ${e.response?.data ?? e.message}');
+    }
   }
 
   Future<Product> createProduct({
     required String name,
     String? description,
     required double price,
+    required String unit,
     required int stock,
+    String? imageUrl,
+    String? imagePath,
   }) async {
-    final uri = Uri.parse('$baseUrl/products');
-    final token = await _getToken(optional: true);
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
+    try {
+      Response res;
+      if (imagePath != null && imagePath.isNotEmpty) {
+        final form = FormData.fromMap({
+          'name': name,
+          'description': description,
+          'price': price,
+          'unit': unit,
+          'stock': stock,
+          if (imageUrl != null) 'image_url': imageUrl,
+          'image': await MultipartFile.fromFile(imagePath, filename: imagePath.split('/').last),
+        });
+        res = await _dio.post('/products', data: form);
+      } else {
+        res = await _dio.post('/products', data: {
+          'name': name,
+          'description': description,
+          'price': price,
+          'unit': unit,
+          'stock': stock,
+          'image_url': imageUrl,
+        });
+      }
+      return Product.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw Exception('Gagal membuat produk: ${e.response?.data ?? e.message}');
     }
-    final res = await http.post(
-      uri,
-      headers: headers,
-      body: jsonEncode({
-        'name': name,
-        'description': description,
-        'price': price,
-        'stock': stock,
-      }),
-    );
-    if (res.statusCode == 201 || res.statusCode == 200) {
-      final body = jsonDecode(res.body);
-      final Map<String, dynamic> data =
-          body is Map<String, dynamic> && body['data'] is Map<String, dynamic>
-              ? body['data'] as Map<String, dynamic>
-              : (body as Map<String, dynamic>);
-      return Product.fromJson(data);
-    }
-    throw Exception('Gagal membuat produk (${res.statusCode}): ${res.body}');
   }
 
   Future<Product> updateProduct({
@@ -73,168 +165,78 @@ class ApiService {
     required String name,
     String? description,
     required double price,
+    required String unit,
     required int stock,
+    String? imageUrl,
+    String? imagePath,
   }) async {
-    final uri = Uri.parse('$baseUrl/products/$id');
-    final token = await _getToken(optional: true);
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
+    try {
+      Response res;
+      if (imagePath != null && imagePath.isNotEmpty) {
+        final form = FormData.fromMap({
+          'name': name,
+          'description': description,
+          'price': price,
+          'unit': unit,
+          'stock': stock,
+          if (imageUrl != null) 'image_url': imageUrl,
+          'image': await MultipartFile.fromFile(imagePath, filename: imagePath.split('/').last),
+        });
+        res = await _dio.put('/products/$id', data: form);
+      } else {
+        res = await _dio.put('/products/$id', data: {
+          'name': name,
+          'description': description,
+          'price': price,
+          'unit': unit,
+          'stock': stock,
+          'image_url': imageUrl,
+        });
+      }
+      return Product.fromJson(res.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw Exception('Gagal mengubah produk: ${e.response?.data ?? e.message}');
     }
-    final res = await http.put(
-      uri,
-      headers: headers,
-      body: jsonEncode({
-        'name': name,
-        'description': description,
-        'price': price,
-        'stock': stock,
-      }),
-    );
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body);
-      final Map<String, dynamic> data =
-          body is Map<String, dynamic> && body['data'] is Map<String, dynamic>
-              ? body['data'] as Map<String, dynamic>
-              : (body as Map<String, dynamic>);
-      return Product.fromJson(data);
-    }
-    throw Exception('Gagal mengubah produk (${res.statusCode}): ${res.body}');
   }
 
   Future<void> deleteProduct(int id) async {
-    final uri = Uri.parse('$baseUrl/products/$id');
-    final token = await _getToken(optional: true);
-    final headers = <String, String>{
-      'Accept': 'application/json',
-    };
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
+    try {
+      await _dio.delete('/products/$id');
+    } on DioException catch (e) {
+      throw Exception('Gagal menghapus produk: ${e.response?.data ?? e.message}');
     }
-    final res = await http.delete(uri, headers: headers);
-    if (res.statusCode != 200 && res.statusCode != 204) {
-      throw Exception('Gagal menghapus produk (${res.statusCode}): ${res.body}');
-    }
-  }
-  
-
-  Future<Map<String, dynamic>> register({
-    required String name,
-    required String email,
-    required String password,
-  }) async {
-    final res = await http.post(
-      Uri.parse('$baseUrl/auth/register'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'name': name, 'email': email, 'password': password}),
-    );
-    if (res.statusCode == 201 || res.statusCode == 200) {
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final token = data['token'] as String?;
-      final user = UserModel.fromJson(data);
-      final role = (data['role'] ?? (data['user'] is Map<String, dynamic> ? (data['user']['role']) : null))?.toString();
-      if (token != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', token);
-      }
-      return {'token': token, 'user': user, if (role != null) 'role': role};
-    }
-    throw Exception('Register gagal: ${res.body}');
-  }
-
-  Future<List<Product>> getProducts() async {
-    final uri = Uri.parse('$baseUrl/products');
-    final token = await _getToken(optional: true);
-    final res = await http.get(uri, headers: {
-      'Accept': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    });
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body);
-      final List items = (body is Map<String, dynamic>) ? (body['data'] ?? []) : body;
-      return items.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
-    }
-    throw Exception('Gagal memuat produk: ${res.body}');
-  }
-
-  Future<void> logout() async {
-    final token = await _getToken(optional: true);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
-    if (token == null) return;
-    final res = await http.post(
-      Uri.parse('$baseUrl/auth/logout'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-    if (res.statusCode != 200) {
-      throw Exception('Logout gagal: ${res.body}');
-    }
-  }
-
-  Future<String?> _getToken({bool optional = false}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-    if (!optional && (token == null || token.isEmpty)) {
-      throw Exception('Belum login');
-    }
-    return token;
-  }
-
-  Future<List<SensorReading>> getSensorReadings() async {
-    final uri = Uri.parse('$baseUrl/sensors');
-    final token = await _getToken(optional: true);
-    final headers = <String, String>{'Accept': 'application/json'};
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    final res = await http.get(uri, headers: headers);
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body);
-      final List items = (body is Map<String, dynamic>) ? (body['data'] ?? []) : body;
-      return items.map((e) => SensorReading.fromJson(e as Map<String, dynamic>)).toList();
-    }
-    throw Exception('Gagal memuat data sensor: ${res.body}');
   }
 
   Future<void> createTransaction({required int productId, int quantity = 1}) async {
-    final uri = Uri.parse('$baseUrl/transactions');
-    final token = await _getToken(optional: true);
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    final res = await http.post(
-      uri,
-      headers: headers,
-      body: jsonEncode({'product_id': productId, 'quantity': quantity}),
-    );
-    if (res.statusCode != 201) {
-      throw Exception('Transaksi gagal (${res.statusCode}): ${res.body}');
+    try {
+      await _dio.post('/transactions', data: {
+        'product_id': productId,
+        'quantity': quantity,
+      });
+    } on DioException catch (e) {
+      throw Exception('Transaksi gagal: ${e.response?.data ?? e.message}');
     }
   }
 
   Future<List<AppTransaction>> getTransactions() async {
-    final uri = Uri.parse('$baseUrl/transactions');
-    final token = await _getToken(optional: true);
-    final headers = <String, String>{'Accept': 'application/json'};
-    if (token != null && token.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $token';
-    }
-    final res = await http.get(uri, headers: headers);
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body);
+    try {
+      final res = await _dio.get('/transactions');
+      final body = res.data;
       final List items = (body is Map<String, dynamic>) ? (body['data'] ?? []) : body;
       return items.map((e) => AppTransaction.fromJson(e as Map<String, dynamic>)).toList();
+    } on DioException catch (e) {
+      throw Exception('Gagal memuat transaksi: ${e.response?.data ?? e.message}');
     }
-    throw Exception('Gagal memuat transaksi (${res.statusCode}): ${res.body}');
+  }
+
+  Future<List<SensorReading>> getIotData() async {
+    try {
+      final res = await _dio.get('/iot');
+      final body = res.data;
+      final List items = (body is Map<String, dynamic>) ? (body['data'] ?? []) : body;
+      return items.map((e) => SensorReading.fromJson(e as Map<String, dynamic>)).toList();
+    } on DioException catch (e) {
+      throw Exception('Gagal memuat data IoT: ${e.response?.data ?? e.message}');
+    }
   }
 }

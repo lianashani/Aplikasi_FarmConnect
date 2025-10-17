@@ -16,21 +16,22 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
+            'role' => 'required|in:petani,pembeli',
         ]);
 
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
+            'role' => $data['role'],
+            'is_active' => true,
         ]);
 
-        // Token akan berfungsi setelah Sanctum terpasang
-        $token = method_exists($user, 'createToken') ? $user->createToken('mobile')->plainTextToken : null;
+        $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
             'token' => $token,
-            'nama_petani' => $user->name,
-            'id_petani' => $user->id,
+            'user' => $user,
         ], 201);
     }
 
@@ -47,12 +48,11 @@ class AuthController extends Controller
 
         /** @var User $user */
         $user = Auth::user();
-        $token = method_exists($user, 'createToken') ? $user->createToken('mobile')->plainTextToken : null;
+        $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
             'token' => $token,
-            'nama_petani' => $user->name,
-            'id_petani' => $user->id,
+            'user' => $user,
         ]);
     }
 

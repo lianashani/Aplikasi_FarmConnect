@@ -14,16 +14,19 @@ class TransactionController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        if (!$user) {
-            $user = User::first();
-            if (!$user) {
-                return response()->json(['data' => [], 'meta' => ['current_page' => 1, 'last_page' => 1, 'total' => 0]], 200);
-            }
+        $query = Transaction::with('product');
+        if ($user->role === 'admin') {
+            // admin: all transactions
+        } elseif ($user->role === 'petani') {
+            // petani: transactions for their products
+            $query->whereHas('product', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            });
+        } else {
+            // pembeli: own transactions
+            $query->where('user_id', $user->id);
         }
-        $transactions = Transaction::with('product')
-            ->where('buyer_id', $user->id)
-            ->latest('id')
-            ->paginate(20);
+        $transactions = $query->latest('id')->paginate(20);
 
         return response()->json([
             'data' => $transactions->items(),
@@ -43,11 +46,8 @@ class TransactionController extends Controller
         ]);
 
         $user = $request->user();
-        if (!$user) {
-            $user = User::first();
-            if (!$user) {
-                return response()->json(['message' => 'Tidak ada user terdaftar untuk transaksi'], 422);
-            }
+        if ($user->role !== 'pembeli') {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
         $transaction = DB::transaction(function () use ($data, $user) {
@@ -62,7 +62,7 @@ class TransactionController extends Controller
             $product->decrement('stock', $data['quantity']);
 
             return Transaction::create([
-                'buyer_id' => $user->id,
+                'user_id' => $user->id,
                 'product_id' => $product->id,
                 'quantity' => $data['quantity'],
                 'total_price' => $total,
@@ -71,5 +71,26 @@ class TransactionController extends Controller
         });
 
         return response()->json($transaction, 201);
+    }
+
+    public function updateStatus(Request $request, int $id)
+    {
+        $user = $request->user();
+        $data = $request->validate([
+            'status' => 'required|in:pending,processed,done',
+        ]);
+        $trx = Transaction::with('product')->findOrFail($id);
+        if ($user->role === 'admin') {
+            // allow
+        } elseif ($user->role === 'petani') {
+            if ($trx->product->user_id !== $user->id) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        } else {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $trx->status = $data['status'];
+        $trx->save();
+        return response()->json($trx);
     }
 }

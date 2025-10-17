@@ -15,13 +15,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Optional example factory user
-        // User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
-
-        // Seed demo farmer and products
-        $this->call(DemoSeeder::class);
+        // Seed default admin and demo data
+        $this->call([
+            AdminSeeder::class,
+            DemoSeeder::class,
+        ]);
     }
 }

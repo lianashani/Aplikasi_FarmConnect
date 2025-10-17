@@ -3,6 +3,7 @@ class Product {
   final String name;
   final String? description;
   final double price;
+  final String? unit;
   final int stock;
   final String? imageUrl;
   final int? userId;
@@ -12,6 +13,7 @@ class Product {
     required this.name,
     this.description,
     required this.price,
+    this.unit,
     required this.stock,
     this.imageUrl,
     this.userId,
@@ -24,6 +26,7 @@ class Product {
         price: j['price'] is num
             ? (j['price'] as num).toDouble()
             : double.parse(j['price'].toString()),
+        unit: j['unit'] as String?,
         stock: j['stock'] is int
             ? j['stock'] as int
             : int.tryParse(j['stock']?.toString() ?? '0') ?? 0,
